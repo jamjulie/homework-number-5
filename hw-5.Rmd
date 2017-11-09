@@ -1,0 +1,231 @@
+---
+title: "Homework #5 for AN597"
+author: "Julie Jung (I went partnerless for this assignment)"
+date: "November 8, 2017"
+output:
+  html_document:
+    theme: united
+    highlight: tango
+---
+
+---
+
+# Bootstrapping Standard Errors and CIs for Linear Models.
+
+When we initially discussed the central limit theorem and confidence intervals, we showed how we could use bootstrapping to estimate standard errors and confidence intervals around certain parameter values, like the mean. Using bootstrapping, we could also do the same for estimating standard errors and CIs around regression parameters, such as β coefficients.
+
+**[1] Using the “KamilarAndCooperData.csv” dataset, run a linear regression looking at log(HomeRange_km2) in relation to log(Body_mass_female_mean) and report your β coeffiecients (slope and intercept).**
+
+```{r}
+
+# import data
+
+library(curl)
+f <- curl("https://raw.githubusercontent.com/fuzzyatelin/fuzzyatelin.github.io/master/AN597_Fall17/KamilarAndCooperData.csv")
+d <- read.csv(f, header = TRUE, sep = ",", stringsAsFactors = FALSE)
+head(d)
+
+# run a linear regression looking at log(HomeRange_km2) in relation to log(Body_mass_female_mean) 
+
+# check for normality
+m <- lm(data = d, log(HomeRange_km2) ~ log(Body_mass_female_mean))
+hist(m$residuals)
+library(car)
+qqPlot(m$residuals)
+s <- shapiro.test(m$residuals)
+s  #normal
+
+# report your β coeffiecients (slope and intercept).
+t <- coef(summary(m))
+t <- data.frame(unlist(t))
+colnames(t) <- c("Est", "SE", "t", "p")
+t
+beta0 <- t$Est[1] #The intercept, β0, is the PREDICTED value of y when the value of x is zero.
+beta1 <- t$Est[2] #The slope, β1 is EXPECTED CHANGE in units of y for every 1 unit of change in x
+
+library(ggplot2)
+ggplot(data = d, aes(x = log(Body_mass_female_mean), y = log(HomeRange_km2))) +
+  geom_point()+
+  geom_smooth(method="lm", se=F, color="black")+
+  annotate("text", x = 5.9, y = 3, label = "y = 1.036432 * x - 9.441231")+
+  ylab("Log of Home Range (km2)")+
+  theme_bw(20) +
+  xlab("Log of Mean Female Body Mass")
+
+```
+
+> beta0
+[1] -9.441231
+> beta1
+[1] 1.036432
+
+The intercept, β0, is -9.441231 - this is the PREDICTED value of y when the value of x is zero.
+The slope, β1, is 1.036432 - this is EXPECTED CHANGE in units of y for every 1 unit of change in x. 
+
+**[2] Then, use bootstrapping to sample from your data 1000 times with replacement, each time fitting the same model and calculating the same coefficients. This generates a sampling distribution for each β coefficient.**
+
+```{r}
+
+set.beta0<-NULL # sets up a dummy variable to hold our 1000 simulations
+set.beta1<-NULL
+
+for (i in 1:1000) {
+  m <- lm(data=d, log(HomeRange_km2) ~ log(Body_mass_female_mean))
+  t <- coef(summary(m))
+  t <- data.frame(unlist(t))
+  colnames(t) <- c("Est", "SE", "t", "p")
+  t
+  beta0 <- t$Est[1] #The intercept, β0, is the PREDICTED value of y when the value of x is zero.
+  beta1 <- t$Est[2] #The slope, β1 is EXPECTED CHANGE in units of y for every 1 unit of change in x
+  set.beta0[i] <- mean(sample(beta0, 1000, replace=TRUE))
+  set.beta1[i] <- mean(sample(beta1, 1000, replace=TRUE))
+  }
+
+```
+
+**Estimate the standard error for each of your β coefficients as the standard deviation of the sampling distribution from your bootstrap and determine the 95% CI for each of your β coefficients based on the appropriate quantiles from your sampling distribution.**
+
+```{r}
+#Estimate the standard error for each of your β coefficients as the standard deviation of the sampling distribution from your bootstrap
+SE <- function(x) {
+    sd(x)/sqrt(length(x))
+}
+
+SE(set.beta0)
+SE(set.beta1)
+
+# determine the 95% CI for each of your β coefficients based on the appropriate quantiles from your sampling distribution.
+quantile(set.beta0, c(0.025, 0.975))
+quantile(set.beta1, c(0.025, 0.975))
+
+```
+
+**How does the former compare to the SE estimated from your entire dataset using the formula for standard error implemented in lm()?**
+
+The former (bootstrap SE) is much smaller than the SE estimated from my entire dataset. (code below)
+
+```{r}
+#SE estimated from your entire dataset using the formula for standard error implemented in lm()
+
+X<- summary(m)$coef
+X[,2]
+
+```
+
+**How does the latter compare to the 95% CI estimated from your entire dataset?**
+
+The latter (bootstrap CIs) are much tighter/smaller/more precise than the CIs estimated from my entire dataset. (code below)
+
+```{r}
+
+confint(m)
+
+```
+
+**EXTRA CREDIT: + 2: Write a FUNCTION that takes as its arguments a dataframe, “d”, a linear model, “m” (as a character string, e.g., “logHR~logBM”), a user-defined confidence interval level, “conf.level” (with default = 0.95), and a number of bootstrap replicates, “n” (with default = 1000). Your function should return a dataframe that includes: beta coefficient names; beta coefficients, standard errors, and upper and lower CI limits for the linear model based on your entire dataset; and mean beta coefficient estimates, SEs, and CI limits for those coefficients based on your bootstrap.**
+```{r}
+
+boots <- function(d, m, conf.level=0.95, n=1000) {
+
+  # d == dataframe
+  # m == a linear model as a character string
+  # conf.level == user-defined confidence interval level, default 0.95
+  # n == number of bootstrap replicates
+  
+  
+  # beta coefficient names
+  betanames <- c("beta0", "beta1")
+  
+  # beta coefficients
+  m <- lm(data=d, m)
+  t <- coef(summary(m))
+  t <- data.frame(unlist(t))
+  colnames(t) <- c("Est", "SE", "t", "p")
+  t
+  beta0 <- t$Est[1] #The intercept, β0, is the PREDICTED value of y when the value of x is zero.
+  beta1 <- t$Est[2] #The slope, β1 is EXPECTED CHANGE in units of y for every 1 unit of change in x
+
+  betacoefs <- c(beta0, beta1)
+  
+  # standard errors
+  X<- summary(m)$coef
+  SE.entire<-X[,2]
+  
+  # upper and lower CI limits for the linear model based on your entire dataset
+  lower.CI.entire<-confint(m)[,1]
+  upper.CI.entire<-confint(m)[,2]
+  
+  #bootstrap analysis
+  
+  set.beta0<-NULL # sets up a dummy variable to hold our 1000 simulations
+  set.beta1<-NULL
+
+  for (i in 1:1000) {
+    m <- lm(data=d, m)
+    t <- coef(summary(m))
+    t <- data.frame(unlist(t))
+    colnames(t) <- c("Est", "SE", "t", "p")
+    t
+    beta0 <- t$Est[1] #The intercept, β0, is the PREDICTED value of y when the value of x is zero.
+    beta1 <- t$Est[2] #The slope, β1 is EXPECTED CHANGE in units of y for every 1 unit of change in x
+    set.beta0[i] <- mean(sample(beta0, 1000, replace=TRUE))
+    set.beta1[i] <- mean(sample(beta1, 1000, replace=TRUE))
+  }
+
+  # mean beta coefficient estimates for those coefficients based on your bootstrap
+  mean.beta0.bootstrap <- mean(set.beta0)
+  mean.beta1.bootstrap <- mean(set.beta1)
+  mean.bootstrap <- c(mean.beta0.bootstrap, mean.beta1.bootstrap)
+  
+  # SEs for those coefficients based on your bootstrap
+  SE <- function(x) {
+      sd(x)/sqrt(length(x))
+  }
+
+  SE.beta0.bootstrap <- SE(set.beta0)
+  SE.beta1.bootstrap <- SE(set.beta1)
+  SE.bootstrap <- c(SE.beta0.bootstrap, SE.beta1.bootstrap)
+
+  # CI limits for those coefficients based on your bootstrap
+  
+  CI.beta0.bootstrap <- quantile(set.beta0, c(0.025, 0.975))
+  CI.beta1.bootstrap <- quantile(set.beta1, c(0.025, 0.975))
+  CI.bootstrap<- c(CI.beta0.bootstrap, CI.beta1.bootstrap)
+  
+  #print result
+  df <- data.frame(betanames, betacoefs, SE.entire, lower.CI.entire, upper.CI.entire, mean.bootstrap, SE.bootstrap, CI.bootstrap)
+  
+  return (df)
+}
+
+```
+
+**EXTRA EXTRA CREDIT: + 1: Graph each beta value from the linear model and its corresponding mean value, lower CI and upper CI from a bootstrap as a function of number of bootstraps from 10 to 200 by 10s. HINT: the beta value from the linear model will be the same for all bootstraps and the mean beta value may not differ that much!**
+
+```{r}
+
+### i haven't gotten this part to work yet!
+
+# set.beta0<-NULL # sets up a dummy variable to hold our 1000 simulations
+# set.beta1<-NULL
+# 
+# for (i in 200) {
+#   t <- coef(summary(m))
+#   t <- data.frame(unlist(t))
+#   colnames(t) <- c("Est", "SE", "t", "p")
+#   t
+#   beta0 <- t$Est[1] #The intercept, β0, is the PREDICTED value of y when the value of x is zero.
+#   beta1 <- t$Est[2] #The slope, β1 is EXPECTED CHANGE in units of y for every 1 unit of change in x
+#   set.beta0[i] <- mean(sample(beta0, 200, replace=TRUE))
+#   set.beta1[i] <- mean(sample(beta1, 200, replace=TRUE))
+#   
+#   plot(x = i, y = set.beta0)
+#   
+#   plot(x,y1,type="l",col="red")
+#   lines(x,y2,col="green")
+# }
+# 
+# plot(x = seq(1:length(set.beta0)), y = set.beta0)
+
+```
+

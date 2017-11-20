@@ -1,6 +1,6 @@
 ---
 title: "Homework #5 for AN597"
-author: "Julie Jung (I went partnerless for this assignment)"
+author: "Julie Jung"
 date: "November 8, 2017"
 output:
   html_document:
@@ -43,14 +43,8 @@ t
 beta0 <- t$Est[1] #The intercept, β0, is the PREDICTED value of y when the value of x is zero.
 beta1 <- t$Est[2] #The slope, β1 is EXPECTED CHANGE in units of y for every 1 unit of change in x
 
-library(ggplot2)
-ggplot(data = d, aes(x = log(Body_mass_female_mean), y = log(HomeRange_km2))) +
-  geom_point()+
-  geom_smooth(method="lm", se=F, color="black")+
-  annotate("text", x = 5.9, y = 3, label = "y = 1.036432 * x - 9.441231")+
-  ylab("Log of Home Range (km2)")+
-  theme_bw(20) +
-  xlab("Log of Mean Female Body Mass")
+beta0
+beta1
 
 ```
 
@@ -62,7 +56,101 @@ ggplot(data = d, aes(x = log(Body_mass_female_mean), y = log(HomeRange_km2))) +
 The intercept, β0, is -9.441231 - this is the PREDICTED value of y when the value of x is zero.
 The slope, β1, is 1.036432 - this is EXPECTED CHANGE in units of y for every 1 unit of change in x. 
 
+### Plot
+
+```{r}
+library(ggplot2)
+
+ggplot(data = d, aes(x = log(Body_mass_female_mean), y = log(HomeRange_km2))) +
+  geom_point()+
+  geom_smooth(method="lm", se=F, color="black")+
+  annotate("text", x = 5.9, y = 3, label = "y = 1.036432 * x - 9.441231")+
+  ylab("Log of Home Range (km2)")+
+  theme_bw(20) +
+  xlab("Log of Mean Female Body Mass")
+
+```
+
+
 **[2] Then, use bootstrapping to sample from your data 1000 times with replacement, each time fitting the same model and calculating the same coefficients. This generates a sampling distribution for each β coefficient.**
+
+## Use Boot to do this: 
+
+```{r}
+library(boot)
+
+#function to obtain regression weights
+bs <- function(formula, data=d, indices) {
+  d<-data[indices, ] #allows boot to select sample
+  fit<-lm(formula, data=d)
+  return(coef(fit))
+}
+
+results <- boot(data=d, statistic=bs, R=1000, formula=log(HomeRange_km2)~log(Body_mass_female_mean)) 
+
+# view results
+results
+
+```
+
+SE intercept: 0.60557478
+SE slope: 0.07865944
+
+```{r}
+plot(results, index=1) # intercept 
+plot(results, index=2) # wt 
+```
+
+
+```{r}
+# get 95% confidence intervals 
+boot.ci(results, type="bca", index=1) # intercept 
+boot.ci(results, type="bca", index=2) # wt 
+
+```
+
+95% CI intercept:   (-10.736,  -8.368 ) 
+95% CI slope:   ( 0.894,  1.197 )  
+
+
+### compare SEs and CIs
+
+**How does the former compare to the SE estimated from your entire dataset using the formula for standard error implemented in lm()?**
+
+
+```{r}
+X<- summary(m)$coef
+X[,2]
+```
+
+ENTIRE DATASET RESULTS: 
+               (Intercept) log(Body_mass_female_mean) 
+                0.67293459                 0.08487709 
+
+BOOTSTRAP RESULTS: 
+SE intercept: 0.60557478
+SE slope: 0.07865944
+
+THESE ARE REALLY SIMILAR. 
+
+**How does the latter compare to the 95% CI estimated from your entire dataset?**
+```{r}
+confint(m)
+```
+ENTIRE DATASET RESULTS: 
+                                 2.5 %    97.5 %
+(Intercept)                -10.7720889 -8.110374
+log(Body_mass_female_mean)   0.8685707  1.204292
+
+BOOTSTRAP RESULTS: 
+
+95% CI intercept:   (-10.736,  -8.368 ) 
+95% CI slope:   ( 0.894,  1.197 )  
+
+ALSO REALLY SIMILAR. 
+
+
+##HERE I ATTEMPT TO DO IT MANUALLY WITHOUT USING THE BOOT PACKAGE: 
 
 ```{r}
 
@@ -71,34 +159,61 @@ set.beta1<-NULL
 
 for (i in 1:1000) {
   m <- lm(data=d, log(HomeRange_km2) ~ log(Body_mass_female_mean))
+  summary(m)
   t <- coef(summary(m))
   t <- data.frame(unlist(t))
   colnames(t) <- c("Est", "SE", "t", "p")
   t
+  
   beta0 <- t$Est[1] #The intercept, β0, is the PREDICTED value of y when the value of x is zero.
   beta1 <- t$Est[2] #The slope, β1 is EXPECTED CHANGE in units of y for every 1 unit of change in x
+  
   set.beta0[i] <- mean(sample(beta0, 1000, replace=TRUE))
   set.beta1[i] <- mean(sample(beta1, 1000, replace=TRUE))
   }
 
 ```
+Plot
+
+```{r}
+plot(set.beta0) 
+plot(set.beta1)
+```
+
+It's weird that I'm getting -9.441231 every time for beta 0, which is why I went back and added code to do it the easier way (using boot) as well at the beginning of this script/notebook. 
 
 **Estimate the standard error for each of your β coefficients as the standard deviation of the sampling distribution from your bootstrap and determine the 95% CI for each of your β coefficients based on the appropriate quantiles from your sampling distribution.**
 
+## Standard error estimation
+
 ```{r}
 #Estimate the standard error for each of your β coefficients as the standard deviation of the sampling distribution from your bootstrap
+
+t$SE[1]
+t$SE[2]
+
+# an alternative way, if you want to get it manually: 
 SE <- function(x) {
     sd(x)/sqrt(length(x))
 }
 
 SE(set.beta0)
 SE(set.beta1)
+```
 
+The SE of the intercept, β0, is 0.6729346. 
+The SE of the slope, β1, is 0.08487709. 
+
+```{r}
 # determine the 95% CI for each of your β coefficients based on the appropriate quantiles from your sampling distribution.
+
 quantile(set.beta0, c(0.025, 0.975))
 quantile(set.beta1, c(0.025, 0.975))
 
 ```
+
+The 95% confidence interval of the intercept, β0, is -9.441231, -9.441231. 
+The 95% confidence interval of the slope, β1, is 1.025, 1.047 . 
 
 **How does the former compare to the SE estimated from your entire dataset using the formula for standard error implemented in lm()?**
 
@@ -122,7 +237,10 @@ confint(m)
 
 ```
 
-**EXTRA CREDIT: + 2: Write a FUNCTION that takes as its arguments a dataframe, “d”, a linear model, “m” (as a character string, e.g., “logHR~logBM”), a user-defined confidence interval level, “conf.level” (with default = 0.95), and a number of bootstrap replicates, “n” (with default = 1000). Your function should return a dataframe that includes: beta coefficient names; beta coefficients, standard errors, and upper and lower CI limits for the linear model based on your entire dataset; and mean beta coefficient estimates, SEs, and CI limits for those coefficients based on your bootstrap.**
+## **EXTRA CREDIT: + 2: Write a FUNCTION that takes as its arguments a dataframe, “d”, a linear model, “m” (as a character string, e.g., “logHR~logBM”), a user-defined confidence interval level, “conf.level” (with default = 0.95), and a number of bootstrap replicates, “n” (with default = 1000). Your function should return a dataframe that includes: beta coefficient names; beta coefficients, standard errors, and upper and lower CI limits for the linear model based on your entire dataset; and mean beta coefficient estimates, SEs, and CI limits for those coefficients based on your bootstrap.**
+
+### NOTE: I did this using the part of my code that doesn't use Boot, which I didn't get to come out quite right... but the function still works :) 
+
 ```{r}
 
 boots <- function(d, m, conf.level=0.95, n=1000) {
@@ -190,15 +308,20 @@ boots <- function(d, m, conf.level=0.95, n=1000) {
   
   CI.beta0.bootstrap <- quantile(set.beta0, c(0.025, 0.975))
   CI.beta1.bootstrap <- quantile(set.beta1, c(0.025, 0.975))
-  CI.bootstrap<- c(CI.beta0.bootstrap, CI.beta1.bootstrap)
+  
+  CI.lower.bootstrap <- c(CI.beta0.bootstrap[1], CI.beta1.bootstrap[1])
+  CI.upper.bootstrap <- c(CI.beta0.bootstrap[2], CI.beta1.bootstrap[2])
   
   #print result
-  df <- data.frame(betanames, betacoefs, SE.entire, lower.CI.entire, upper.CI.entire, mean.bootstrap, SE.bootstrap, CI.bootstrap)
+  df <- data.frame(betanames, betacoefs, SE.entire, lower.CI.entire, upper.CI.entire, mean.bootstrap, SE.bootstrap, CI.lower.bootstrap, CI.upper.bootstrap)
   
   return (df)
 }
 
+boots(d=d, m= log(HomeRange_km2) ~ log(Body_mass_female_mean))
+
 ```
+
 
 **EXTRA EXTRA CREDIT: + 1: Graph each beta value from the linear model and its corresponding mean value, lower CI and upper CI from a bootstrap as a function of number of bootstraps from 10 to 200 by 10s. HINT: the beta value from the linear model will be the same for all bootstraps and the mean beta value may not differ that much!**
 
